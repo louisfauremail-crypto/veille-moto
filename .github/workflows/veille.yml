@@ -1,0 +1,50 @@
+name: Veille moto
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # toutes les 30 minutes
+  workflow_dispatch:          # bouton "Run workflow" pour lancer à la main
+
+concurrency:
+  group: veille-moto
+  cancel-in-progress: false
+
+jobs:
+  veille:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Europe/Paris
+      MOTO_USER: ${{ secrets.MOTO_USER }}
+      MOTO_PASS: ${{ secrets.MOTO_PASS }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Récupérer les créneaux déjà signalés
+        uses: actions/cache/restore@v4
+        with:
+          path: creneaux_vus.json
+          key: etat-${{ github.run_id }}
+          restore-keys: etat-
+
+      - name: Vérifier les créneaux
+        run: python veille_moto.py --unique
+
+      - name: Mémoriser les créneaux signalés
+        if: always() && hashFiles('creneaux_vus.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: creneaux_vus.json
+          key: etat-${{ github.run_id }}
